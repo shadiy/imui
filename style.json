@@ -1,0 +1,41 @@
+{
+    "font_size": 16,
+    "h1_size": 32,
+    "primary": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 255
+    },
+    "secondary": {
+        "r": 80,
+        "g": 80,
+        "b": 80,
+        "a": 255
+    },
+    "background_color": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 255
+    },
+    "border_thickness": 4,
+    "border_color": {
+        "r": 80,
+        "g": 80,
+        "b": 80,
+        "a": 255
+    },
+    "hover_background_color": {
+        "r": 80,
+        "g": 80,
+        "b": 80,
+        "a": 255
+    },
+    "pressed_background_color": {
+        "r": 230,
+        "g": 51,
+        "b": 55,
+        "a": 255
+    }
+}
