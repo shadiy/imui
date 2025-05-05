@@ -20,6 +20,9 @@ pub fn main() !void {
     var progress_bar_value: f32 = 0.0;
     var selected_dropdown_item: usize = 0;
 
+    var onoff: bool = false;
+    var check: bool = false;
+
     while (!ray.windowShouldClose()) {
         imui.startFrame();
 
@@ -32,7 +35,7 @@ pub fn main() !void {
 
             imui.container("content", .{ .child_axis = .horizontalStack }, imui.percent(100, 90))({
                 imui.container("sidebar", .{ .child_axis = .verticalStack }, imui.percent(20, 100))({
-                    imui.verticalTabs(&[_][]const u8{ "Hello", "Foo", "Bar" }, &active_tab, imui.percent(90, 5));
+                    imui.verticalTabs(&[_][]const u8{ "Network and Wireless", "Bluetooth", "Desktop" }, &active_tab, imui.percent(90, 5));
                 });
 
                 imui.container("primary", .{ .child_axis = .verticalStack, .border_thickness = 0 }, imui.percent(70, 100))({
@@ -42,10 +45,13 @@ pub fn main() !void {
                             imui.progressBar(&progress_bar_value, 0, 20, 5, "Volume", null, .{ .x = 300, .y = 15 });
 
                             imui.dropdown(&[_][]const u8{ "Hello", "Foo", "Bar" }, &selected_dropdown_item);
-
-                            imui.image(image1);
                         },
-                        1 => {},
+                        1 => {
+                            imui.h1("Bluetooth");
+                            imui.toggleSwitch(&onoff);
+                            imui.divider();
+                            imui.checkbox(&check);
+                        },
                         2 => {
                             imui.h1("Desktop");
                             if (imui.button("Wallpaper")) {}

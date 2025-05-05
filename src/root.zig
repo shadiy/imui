@@ -30,6 +30,10 @@ const Style = struct {
     hover_background_color: ray.Color = ray.Color.dark_gray,
 
     pressed_background_color: ray.Color = ray.Color.red,
+
+    switch_off_color: ray.Color = ray.Color.dark_gray,
+    switch_on_color: ray.Color = ray.Color.ray_white,
+    switch_handle_color: ray.Color = ray.Color.dark_gray,
 };
 
 var style = Style{};
@@ -111,8 +115,13 @@ fn formatZ(comptime format: []const u8, args: anytype) ![:0]const u8 {
     return std.fmt.bufPrintZ(&S.buf, format, args) catch unreachable;
 }
 
-var images = std.ArrayList(ray.Texture2D).init(allocator);
+/// returns the percent of size of parent container
+pub fn percent(x: f32, y: f32) ray.Vector2 {
+    const parent_size: ray.Vector2 = if (curr_container_data) |data| .{ .x = data.rect.width, .y = data.rect.height } else .{ .x = window_width, .y = window_height };
+    return .{ .x = parent_size.x * (x / 100), .y = parent_size.y * (y / 100) };
+}
 
+var images = std.ArrayList(ray.Texture2D).init(allocator);
 pub fn loadImage(path: []const u8) !*ray.Texture2D {
     const pathZ = try formatZ("{s}", .{path});
     const tex = try ray.loadTexture(pathZ);
@@ -635,8 +644,86 @@ pub fn verticalTabs(tabs: []const []const u8, selected: *usize, tab_size: ray.Ve
     if (curr_window_data) |data| data.container_data.cursor.add(tab_size.x, prev_tabs_height_sum);
 }
 
-// returns the percent of size of parent container
-pub fn percent(x: f32, y: f32) ray.Vector2 {
-    const parent_size: ray.Vector2 = if (curr_container_data) |data| .{ .x = data.rect.width, .y = data.rect.height } else .{ .x = window_width, .y = window_height };
-    return .{ .x = parent_size.x * (x / 100), .y = parent_size.y * (y / 100) };
+pub fn toggleSwitch(value: *bool) void {
+    const pos = calcPosition();
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 40, .height = 20 };
+
+    const backgorund_rect: ray.Rectangle = .{ .x = rect.x, .y = rect.y, .width = rect.width, .height = rect.height };
+    const background_color = if (value.*) style.switch_on_color else style.switch_off_color;
+    ray.drawRectangleRounded(backgorund_rect, 1, 8, background_color);
+
+    const radius = backgorund_rect.height / 2;
+    const center_x = if (value.*) backgorund_rect.x + backgorund_rect.width / 2 + radius else backgorund_rect.x + radius;
+    const center_y = backgorund_rect.y + backgorund_rect.height / 2;
+    ray.drawCircleV(.{ .x = center_x, .y = center_y }, radius, style.switch_handle_color);
+
+    if (isMouseOver(backgorund_rect) and ray.isMouseButtonPressed(.left)) {
+        value.* = !value.*;
+    }
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+}
+
+pub fn checkbox(value: *bool) void {
+    const pos = calcPosition();
+
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 20, .height = 20 };
+
+    if (isMouseOver(rect) and ray.isMouseButtonPressed(.left)) {
+        value.* = !value.*;
+    }
+
+    const color = if (value.*) style.switch_on_color else style.switch_off_color;
+    ray.drawRectangleRec(rect, color);
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+}
+
+pub fn divider() void {
+    const pos = calcPosition();
+
+    const size_x = if (curr_container_data) |data| data.rect.width else 0;
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = size_x, .height = 1 };
+
+    ray.drawLineEx(.{ .x = rect.x, .y = rect.y }, .{ .x = rect.x + size_x, .y = rect.y }, rect.height, style.text_color);
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+}
+
+pub fn input(curr_text: [:0]const u8, active: *bool) void {
+    const S = struct {
+        var input: [1024:0]u8 = undefined;
+    };
+
+    std.mem.copyForwards(u8, S.input, curr_text);
+
+    const pos = calcPosition();
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 100, .height = 20 };
+
+    ray.drawRectangleLinesEx(rect, 1, style.text_color);
+
+    if (isMouseOver(rect) and ray.isMouseButtonPressed(.left)) {
+        active.* = true;
+    }
+
+    if (active.*) {
+        while (true) {
+            const char = ray.getCharPressed();
+            if (char == 0) break;
+
+            S.last_char += 1;
+            S.input[S.last_char] = char;
+            S.input[S.last_char + 1] = 0;
+        }
+    }
+
+    ray.drawTextEx(font, S.input, pos, 13, 1, ray.Color.white);
+
+    std.mem.copyForwards(u8, curr_text, S.input);
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
 }
