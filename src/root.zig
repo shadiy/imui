@@ -22,7 +22,7 @@ const Style = struct {
     tertiary: ray.Color = ray.Color.light_gray,
 
     background_color: ray.Color = ray.Color.black,
-    text_color: ray.Color = ray.Color.purple,
+    text_color: ray.Color = ray.Color.ray_white,
 
     border_thickness: f32 = 4,
     border_color: ray.Color = ray.Color.dark_gray,
@@ -65,6 +65,7 @@ pub fn openWindow(width: i32, height: i32, title: []const u8) !void {
     style = try loadStyle("style.json");
 
     gui.guiSetStyle(.default, gui.GuiDefaultProperty.background_color, ray.Color.toInt(style.background_color));
+    gui.guiSetStyle(.default, gui.GuiControlProperty.border_width, 0);
 
     ray.setTargetFPS(60);
     //ray.enableEventWaiting();
@@ -73,6 +74,8 @@ pub fn openWindow(width: i32, height: i32, title: []const u8) !void {
 pub fn closeWindow() void {
     window_data_map.deinit();
     container_data_map.deinit();
+
+    images.deinit();
 
     ray.closeWindow();
 }
@@ -98,6 +101,15 @@ fn formatZ(comptime format: []const u8, args: anytype) ![:0]const u8 {
     };
 
     return std.fmt.bufPrintZ(&S.buf, format, args) catch unreachable;
+}
+
+var images = std.ArrayList(ray.Texture2D).init(allocator);
+
+pub fn loadImage(path: []const u8) !*ray.Texture2D {
+    const pathZ = try formatZ("{s}", .{path});
+    const tex = try ray.loadTexture(pathZ);
+    try images.append(tex);
+    return &images.items[images.items.len - 1];
 }
 
 pub fn loadFont(path: []const u8) !ray.Font {
@@ -151,6 +163,8 @@ const ContainerStyle = struct {
     padding: f32 = 20,
     child_width: f32 = 100,
     child_height: f32 = 100,
+    rounded_corners: bool = false,
+    border_thickness: f32 = 0,
 };
 
 const ContainerData = struct {
@@ -197,7 +211,15 @@ pub inline fn container(unique_id: []const u8, container_style: ContainerStyle, 
     const content_rect = ray.Rectangle{ .x = 0, .y = 0, .width = data.last_cursor.x, .height = data.last_cursor.y };
     _ = gui.guiScrollPanel(data.rect, null, content_rect, &data.scroll, &data.view);
 
-    ray.beginScissorMode(@intFromFloat(data.rect.x), @intFromFloat(data.rect.y), @intFromFloat(data.rect.width), @intFromFloat(data.rect.height));
+    if (container_style.border_thickness > 0) {
+        if (container_style.rounded_corners) {
+            ray.drawRectangleRoundedLinesEx(data.rect, 0.05, 6, container_style.border_thickness, style.border_color);
+        } else {
+            ray.drawRectangleLinesEx(data.rect, container_style.border_thickness, style.border_color);
+        }
+    }
+
+    ray.beginScissorMode(@intFromFloat(data.rect.x + container_style.border_thickness), @intFromFloat(data.rect.y + container_style.border_thickness), @intFromFloat(data.rect.width - container_style.border_thickness * 2), @intFromFloat(data.rect.height - container_style.border_thickness * 2));
 
     return endContainer;
 }
@@ -329,35 +351,39 @@ pub fn endContainer(_: void) void {
 
 pub fn button(str: []const u8) bool {
     const pos = calcPosition();
-    const res = buttonEx(str, pos, .{ .x = 180, .y = 40 });
+    const res = button2(str, pos, .{ .x = 180, .y = 40 });
     if (curr_container_data) |data| data.cursor.add(180, 40);
     return res;
 }
 
 pub fn miniButton(str: []const u8) bool {
     const pos = calcPosition();
-    const res = buttonEx(str, pos, .{ .x = 10, .y = 10 });
+    const res = button2(str, pos, .{ .x = 10, .y = 10 });
     if (curr_container_data) |data| data.cursor.add(10, 10);
     return res;
 }
 
-fn buttonEx(str: []const u8, position: ray.Vector2, size: ray.Vector2) bool {
+fn button2(str: []const u8, position: ray.Vector2, size: ray.Vector2) bool {
+    return button3(str, position, size, style.primary, style.secondary, style.pressed_background_color);
+}
+
+pub fn button3(str: []const u8, position: ray.Vector2, size: ray.Vector2, normal: ray.Color, hover: ray.Color, pressed: ray.Color) bool {
     const rect: ray.Rectangle = .{ .x = position.x, .y = position.y, .width = size.x, .height = size.y };
 
     var res = false;
 
     if (isMouseOver(rect)) {
-        ray.drawRectangleRec(rect, style.hover_background_color);
+        ray.drawRectangleRec(rect, hover);
 
         if (ray.isMouseButtonDown(.left)) {
-            ray.drawRectangleRec(rect, style.pressed_background_color);
+            ray.drawRectangleRec(rect, pressed);
         }
 
         if (ray.isMouseButtonReleased(.left)) {
             res = true;
         }
     } else {
-        ray.drawRectangleRec(rect, style.background_color);
+        ray.drawRectangleRec(rect, normal);
         ray.drawRectangleLinesEx(rect, style.border_thickness, style.border_color);
     }
 
@@ -439,7 +465,7 @@ pub inline fn subWindow(unique_id: []const u8, open: *bool) fn (void) void {
 
     // close button
     const x_button_pos: ray.Vector2 = .{ .x = data.container_data.rect.x + data.container_data.rect.width - 10, .y = data.container_data.rect.y + 5 };
-    open.* = !buttonEx("X", x_button_pos, .{ .x = 10, .y = 10 });
+    open.* = !button2("X", x_button_pos, .{ .x = 10, .y = 10 });
 
     // scroll
     var bounds = data.container_data.rect;
@@ -452,7 +478,7 @@ pub inline fn subWindow(unique_id: []const u8, open: *bool) fn (void) void {
     return endContainer;
 }
 
-pub fn image(texture: ray.Texture2D) void {
+pub fn image(texture: *ray.Texture2D) void {
     const pos = calcPosition();
 
     const position: ray.Vector2 = .{ .x = pos.x, .y = pos.y };
@@ -460,7 +486,10 @@ pub fn image(texture: ray.Texture2D) void {
     if (curr_container_data) |data| data.cursor.add(@floatFromInt(texture.width), @floatFromInt(texture.height));
 }
 
-pub fn progressBar(progress: *f32, min: f32, max: f32, text_left: ?[]const u8, text_right: ?[]const u8, size: ray.Vector2) void {
+pub fn progressBar(progress: *f32, min: f32, max: f32, step: f32, text_left: ?[]const u8, text_right: ?[]const u8, size: ray.Vector2) void {
+    var progress_normalized = (progress.* - min) / (max - min);
+    const step_normaized = step / (max - min);
+
     const pos = calcPosition();
 
     const progress_text_left = text_left orelse "";
@@ -477,7 +506,7 @@ pub fn progressBar(progress: *f32, min: f32, max: f32, text_left: ?[]const u8, t
 
     const background_rect: ray.Rectangle = .{ .x = pos.x + progress_text_left_size.x + 2, .y = pos.y, .width = size.x - progress_text_right_size.x - progress_text_left_size.x - 4, .height = size.y };
     var fill_rect = background_rect;
-    fill_rect.width *= progress.*;
+    fill_rect.width *= progress_normalized;
 
     text2(progress_text_left, progress_text_left_pos);
     text2(progress_text_right, progress_text_right_pos);
@@ -487,17 +516,26 @@ pub fn progressBar(progress: *f32, min: f32, max: f32, text_left: ?[]const u8, t
     if (curr_container_data) |data| data.cursor.add(background_rect.width + progress_text_left_size.x + progress_text_right_size.x, background_rect.height);
 
     if (isMouseOver(background_rect)) {
-        ray.drawCircleV(.{ .x = background_rect.x + background_rect.width * progress.*, .y = background_rect.y + background_rect.height / 2 }, 10, style.text_color);
+        ray.drawCircleV(.{ .x = background_rect.x + background_rect.width * progress_normalized, .y = background_rect.y + background_rect.height / 2 }, 10, style.text_color);
 
         if (ray.isMouseButtonDown(.left)) {
             const mouse_pos = ray.getMousePosition();
-            progress.* = (mouse_pos.x - background_rect.x) / background_rect.width;
+            progress_normalized = (mouse_pos.x - background_rect.x) / background_rect.width;
         }
     }
 
+    const step_mod = @mod(progress_normalized, step_normaized);
+    if (step_mod >= step_normaized / 2) {
+        progress_normalized += step_normaized - step_mod;
+    } else if (step_mod < step_normaized / 2) {
+        progress_normalized -= step_mod;
+    }
+
+    progress.* = progress_normalized * (max - min) + min;
     progress.* = std.math.clamp(progress.*, min, max);
 }
 
+// TODO: draw the dropdown menu on top of everything else
 pub fn dropdown(options: []const []const u8, selected: *usize, open: *bool) void {
     const pos = calcPosition();
     const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 180, .height = 40 };
@@ -511,10 +549,36 @@ pub fn dropdown(options: []const []const u8, selected: *usize, open: *bool) void
     if (open.*) {
         for (options, 0..) |option, i| {
             const i_f32: f32 = @floatFromInt(i);
-            if (buttonEx(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
+            if (button2(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
                 selected.* = i;
                 open.* = false;
             }
         }
     }
+}
+
+pub fn horizontalTabs(tabs: []const []const u8, selected: *usize) void {
+    const pos = calcPosition();
+
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 100, .height = 20 };
+
+    var prev_tabs_width_sum: f32 = 0;
+
+    for (tabs, 0..) |tab, i| {
+        const tabZ = formatZ("{s}", .{tab}) catch unreachable;
+        const text_size = ray.measureTextEx(font, tabZ, style.font_size, 1);
+
+        const tab_rect: ray.Rectangle = .{ .x = pos.x + prev_tabs_width_sum, .y = pos.y, .width = text_size.x + 20, .height = text_size.y + 10 };
+
+        prev_tabs_width_sum += tab_rect.width;
+
+        const normal_color = if (i == selected.*) style.primary else style.secondary;
+
+        if (button3(tab, .{ .x = tab_rect.x, .y = tab_rect.y }, .{ .x = tab_rect.width, .y = tab_rect.height }, normal_color, style.secondary, style.pressed_background_color)) {
+            selected.* = i;
+        }
+    }
+
+    if (curr_container_data) |data| data.cursor.add(prev_tabs_width_sum, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(prev_tabs_width_sum, rect.height);
 }
