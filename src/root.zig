@@ -56,11 +56,17 @@ const Cursor = struct {
 };
 var global_container_cursor: Cursor = .{};
 
-pub fn openWindow(width: i32, height: i32, title: []const u8) !void {
+pub var window_width: f32 = 1280;
+pub var window_height: f32 = 720;
+
+pub fn openWindow(width: f32, height: f32, title: []const u8) !void {
+    window_width = width;
+    window_height = height;
+
     ray.setConfigFlags(.{ .msaa_4x_hint = true, .window_highdpi = true });
 
     const titleZ = try formatZ("{s}", .{title});
-    ray.initWindow(width, height, titleZ);
+    ray.initWindow(@intFromFloat(width), @intFromFloat(height), titleZ);
 
     style = try loadStyle("style.json");
 
@@ -89,15 +95,17 @@ pub fn startFrame() void {
 }
 
 pub fn endFrame() void {
+    drawDropdownOptions(dropdown_data);
+
     ray.endDrawing();
 }
 
 /// This is a helper function to format strings to a Z string.
-/// Uses static buffer length: 1024.
-/// If your string is longer than 1024, you will need to use std.fmt.bufPrintZ or std.fmt.allocPrintZ.
+/// Uses static buffer length: 4096.
+/// If your string is longer than 4096, you will need to use std.fmt.bufPrintZ or std.fmt.allocPrintZ.
 fn formatZ(comptime format: []const u8, args: anytype) ![:0]const u8 {
     const S = struct {
-        var buf: [1024]u8 = undefined;
+        var buf: [4096]u8 = undefined;
     };
 
     return std.fmt.bufPrintZ(&S.buf, format, args) catch unreachable;
@@ -179,7 +187,7 @@ var container_data_map = std.StringHashMap(ContainerData).init(allocator);
 var curr_container_data: ?*ContainerData = null;
 var parent_container_data: ?*ContainerData = null;
 
-pub inline fn container(unique_id: []const u8, container_style: ContainerStyle, size: ray.Vector2) fn (void) void {
+pub inline fn openContainer(unique_id: []const u8, container_style: ContainerStyle, size: ray.Vector2) void {
     parent_container_data = curr_container_data;
 
     const pos: ray.Vector2 = .{ .x = global_container_cursor.x, .y = global_container_cursor.y };
@@ -220,8 +228,6 @@ pub inline fn container(unique_id: []const u8, container_style: ContainerStyle, 
     }
 
     ray.beginScissorMode(@intFromFloat(data.rect.x + container_style.border_thickness), @intFromFloat(data.rect.y + container_style.border_thickness), @intFromFloat(data.rect.width - container_style.border_thickness * 2), @intFromFloat(data.rect.height - container_style.border_thickness * 2));
-
-    return endContainer;
 }
 
 pub fn endContainer(_: void) void {
@@ -234,6 +240,11 @@ pub fn endContainer(_: void) void {
     ray.endScissorMode();
     curr_window_data = null;
     curr_container_data = null;
+}
+
+pub inline fn container(unique_id: []const u8, container_style: ContainerStyle, size: ray.Vector2) fn (void) void {
+    openContainer(unique_id, container_style, size);
+    return endContainer;
 }
 
 //pub fn scrollpanel(bounds: ray.Rectangle, content: ray.Rectangle, scroll: *ray.Vector2, view: *ray.Rectangle) void {
@@ -535,26 +546,46 @@ pub fn progressBar(progress: *f32, min: f32, max: f32, step: f32, text_left: ?[]
     progress.* = std.math.clamp(progress.*, min, max);
 }
 
+const DropdownData = struct {
+    rect: ray.Rectangle = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    selected: *usize = undefined,
+    options: []const []const u8 = undefined,
+};
+var dropdown_data: ?DropdownData = null;
+
+fn drawDropdownOptions(maybe_data: ?DropdownData) void {
+    if (maybe_data == null) return;
+
+    const data = &maybe_data.?;
+    const rect = data.rect;
+
+    for (data.options, 0..) |option, i| {
+        const i_f32: f32 = @floatFromInt(i);
+        if (button2(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
+            data.selected.* = i;
+            dropdown_data = null;
+        }
+    }
+}
+
 // TODO: draw the dropdown menu on top of everything else
-pub fn dropdown(options: []const []const u8, selected: *usize, open: *bool) void {
+pub fn dropdown(options: []const []const u8, selected: *usize) void {
     const pos = calcPosition();
     const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 180, .height = 40 };
 
     if (button(options[selected.*])) {
-        open.* = !open.*;
+        if (dropdown_data == null) {
+            dropdown_data = .{
+                .rect = rect,
+                .selected = selected,
+                .options = options,
+            };
+        } else {
+            dropdown_data = null;
+        }
     }
 
     gui.guiDrawIcon(3, @intFromFloat(rect.x + rect.width - 30), @intFromFloat(rect.y + rect.height / 4), 1, style.text_color);
-
-    if (open.*) {
-        for (options, 0..) |option, i| {
-            const i_f32: f32 = @floatFromInt(i);
-            if (button2(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
-                selected.* = i;
-                open.* = false;
-            }
-        }
-    }
 }
 
 pub fn horizontalTabs(tabs: []const []const u8, selected: *usize) void {
@@ -581,4 +612,31 @@ pub fn horizontalTabs(tabs: []const []const u8, selected: *usize) void {
 
     if (curr_container_data) |data| data.cursor.add(prev_tabs_width_sum, rect.height);
     if (curr_window_data) |data| data.container_data.cursor.add(prev_tabs_width_sum, rect.height);
+}
+
+pub fn verticalTabs(tabs: []const []const u8, selected: *usize, tab_size: ray.Vector2) void {
+    const pos = calcPosition();
+
+    var prev_tabs_height_sum: f32 = 0;
+
+    for (tabs, 0..) |tab, i| {
+        const tab_rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y + prev_tabs_height_sum, .width = tab_size.x, .height = tab_size.y };
+
+        prev_tabs_height_sum += tab_rect.height;
+
+        const normal_color = if (i == selected.*) style.primary else style.secondary;
+
+        if (button3(tab, .{ .x = tab_rect.x, .y = tab_rect.y }, tab_size, normal_color, style.secondary, style.pressed_background_color)) {
+            selected.* = i;
+        }
+    }
+
+    if (curr_container_data) |data| data.cursor.add(tab_size.x, prev_tabs_height_sum);
+    if (curr_window_data) |data| data.container_data.cursor.add(tab_size.x, prev_tabs_height_sum);
+}
+
+// returns the percent of size of parent container
+pub fn percent(x: f32, y: f32) ray.Vector2 {
+    const parent_size: ray.Vector2 = if (curr_container_data) |data| .{ .x = data.rect.width, .y = data.rect.height } else .{ .x = window_width, .y = window_height };
+    return .{ .x = parent_size.x * (x / 100), .y = parent_size.y * (y / 100) };
 }
