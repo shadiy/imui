@@ -425,9 +425,8 @@ pub fn text(str: []const u8) void {
     if (curr_container_data) |data| data.cursor.add(text_size.x, text_size.y);
 }
 
-pub fn text2(str: []const u8, pos: ray.Vector2) void {
-    const strZ = formatZ("{s}", .{str}) catch unreachable;
-    ray.drawTextEx(font, strZ, pos, style.font_size, 1, style.text_color);
+pub fn text2(str: [:0]const u8, pos: ray.Vector2) void {
+    ray.drawTextEx(font, str, pos, style.font_size, 1, style.text_color);
 }
 
 pub fn h1(str: []const u8) void {
@@ -506,53 +505,53 @@ pub fn image(texture: *ray.Texture2D) void {
     if (curr_container_data) |data| data.cursor.add(@floatFromInt(texture.width), @floatFromInt(texture.height));
 }
 
-pub fn progressBar(progress: *f32, min: f32, max: f32, step: f32, text_left: ?[]const u8, text_right: ?[]const u8, size: ray.Vector2) void {
-    var progress_normalized = (progress.* - min) / (max - min);
+pub fn slider(value: *f32, min: f32, max: f32, step: f32, text_left: ?[]const u8, text_right: ?[]const u8, size: ray.Vector2) void {
+    var value_normalized = (value.* - min) / (max - min);
     const step_normaized = step / (max - min);
 
     const pos = calcPosition();
 
-    const progress_text_left = text_left orelse "";
-    const progress_text_right = text_right orelse "";
+    const value_text_left = text_left orelse "";
+    const value_text_right = text_right orelse "";
 
-    const progress_text_left_z = formatZ("{s}", .{progress_text_left}) catch unreachable;
-    const progress_text_left_size = ray.measureTextEx(font, progress_text_left_z, style.font_size, 1);
+    const value_text_left_z = formatZ("{s}", .{value_text_left}) catch unreachable;
+    const value_text_left_size = ray.measureTextEx(font, value_text_left_z, style.font_size, 1);
 
-    const progress_text_right_z = formatZ("{s}", .{progress_text_right}) catch unreachable;
-    const progress_text_right_size = ray.measureTextEx(font, progress_text_right_z, style.font_size, 1);
+    const value_text_right_z = formatZ("{s}", .{value_text_right}) catch unreachable;
+    const value_text_right_size = ray.measureTextEx(font, value_text_right_z, style.font_size, 1);
 
-    const progress_text_left_pos = ray.Vector2{ .x = pos.x, .y = pos.y + size.y / 2 - progress_text_left_size.y / 2 };
-    const progress_text_right_pos = ray.Vector2{ .x = pos.x + size.x - progress_text_right_size.x, .y = pos.y + size.y / 2 - progress_text_right_size.y / 2 };
+    const value_text_left_pos = ray.Vector2{ .x = pos.x, .y = pos.y + size.y / 2 - value_text_left_size.y / 2 };
+    const value_text_right_pos = ray.Vector2{ .x = pos.x + size.x - value_text_right_size.x, .y = pos.y + size.y / 2 - value_text_right_size.y / 2 };
 
-    const background_rect: ray.Rectangle = .{ .x = pos.x + progress_text_left_size.x + 2, .y = pos.y, .width = size.x - progress_text_right_size.x - progress_text_left_size.x - 4, .height = size.y };
+    const background_rect: ray.Rectangle = .{ .x = pos.x + value_text_left_size.x + 2, .y = pos.y, .width = size.x - value_text_right_size.x - value_text_left_size.x - 4, .height = size.y };
     var fill_rect = background_rect;
-    fill_rect.width *= progress_normalized;
+    fill_rect.width *= value_normalized;
 
-    text2(progress_text_left, progress_text_left_pos);
-    text2(progress_text_right, progress_text_right_pos);
+    text2(value_text_left_z, value_text_left_pos);
+    text2(value_text_right_z, value_text_right_pos);
 
     ray.drawRectangleRec(background_rect, style.tertiary);
     ray.drawRectangleRec(fill_rect, style.switch_on_color);
-    if (curr_container_data) |data| data.cursor.add(background_rect.width + progress_text_left_size.x + progress_text_right_size.x, background_rect.height);
+    if (curr_container_data) |data| data.cursor.add(background_rect.width + value_text_left_size.x + value_text_right_size.x, background_rect.height);
 
     if (isMouseOver(background_rect)) {
-        ray.drawCircleV(.{ .x = background_rect.x + background_rect.width * progress_normalized, .y = background_rect.y + background_rect.height / 2 }, 10, style.text_color);
+        ray.drawCircleV(.{ .x = background_rect.x + background_rect.width * value_normalized, .y = background_rect.y + background_rect.height / 2 }, 10, style.text_color);
 
         if (ray.isMouseButtonDown(.left)) {
             const mouse_pos = ray.getMousePosition();
-            progress_normalized = (mouse_pos.x - background_rect.x) / background_rect.width;
+            value_normalized = (mouse_pos.x - background_rect.x) / background_rect.width;
         }
     }
 
-    const step_mod = @mod(progress_normalized, step_normaized);
+    const step_mod = @mod(value_normalized, step_normaized);
     if (step_mod >= step_normaized / 2) {
-        progress_normalized += step_normaized - step_mod;
+        value_normalized += step_normaized - step_mod;
     } else if (step_mod < step_normaized / 2) {
-        progress_normalized -= step_mod;
+        value_normalized -= step_mod;
     }
 
-    progress.* = progress_normalized * (max - min) + min;
-    progress.* = std.math.clamp(progress.*, min, max);
+    value.* = value_normalized * (max - min) + min;
+    value.* = std.math.clamp(value.*, min, max);
 }
 
 const DropdownData = struct {
@@ -704,7 +703,9 @@ pub fn radioButtons(options: []const []const u8, selected: *usize) void {
         const i_f32: f32 = @floatFromInt(i);
         const center: ray.Vector2 = .{ .x = pos.x + radius, .y = pos.y + i_f32 * (radius * 2 + 4) + radius };
 
-        text2(option, .{ .x = center.x + radius + 4, .y = center.y - radius / 2 });
+        const formated = formatZ("{s}", .{option}) catch unreachable;
+
+        text2(formated, .{ .x = center.x + radius + 4, .y = center.y - radius / 5 });
 
         const color = if (i == selected.*) style.switch_on_color else style.switch_off_color;
         ray.drawCircleV(center, radius, color);
@@ -715,8 +716,6 @@ pub fn radioButtons(options: []const []const u8, selected: *usize) void {
             selected.* = i;
         }
 
-        const formated = formatZ("{s}", .{option}) catch unreachable;
-
         const text_width: f32 = @floatFromInt(ray.measureText(formated, @intFromFloat(style.font_size)));
         max_width = @max(max_width, text_width);
     }
@@ -725,6 +724,27 @@ pub fn radioButtons(options: []const []const u8, selected: *usize) void {
 
     if (curr_container_data) |data| data.cursor.add(max_width, options_len * radius * 2);
     if (curr_window_data) |data| data.container_data.cursor.add(max_width, options_len * radius * 2);
+}
+
+pub fn numberField(value: *f32, min: f32, max: f32, step: f32) void {
+    const pos = calcPosition();
+
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 100, .height = 20 };
+    const element_width = rect.width / 3;
+
+    if (button2("-", pos, .{ .x = element_width, .y = rect.height })) {
+        value.* -= step;
+        if (value.* < min) value.* = min;
+    }
+
+    const formated = formatZ("{d:.0}", .{value.*}) catch unreachable;
+    const text_size = ray.measureTextEx(font, formated, style.font_size, 1);
+    text2(formated, .{ .x = rect.x + element_width + element_width / 2 - text_size.x / 2, .y = rect.y + text_size.y / 4 });
+
+    if (button2("+", pos.add(.{ .x = element_width * 2, .y = 0 }), .{ .x = element_width, .y = rect.height })) {
+        value.* += step;
+        if (value.* > max) value.* = max;
+    }
 }
 
 var input_cursor: usize = 0;

@@ -31,6 +31,8 @@ pub fn main() !void {
 
     var selected_radio_button: usize = 0;
 
+    var number_field_value: f32 = 0;
+
     while (!ray.windowShouldClose()) {
         imui.startFrame();
 
@@ -50,7 +52,7 @@ pub fn main() !void {
                     switch (active_tab) {
                         0 => {
                             imui.h1("Network and Wireless");
-                            imui.progressBar(&progress_bar_value, 0, 20, 5, "Volume", null, .{ .x = 300, .y = 15 });
+                            imui.slider(&progress_bar_value, 0, 20, 5, "Volume", null, .{ .x = 300, .y = 15 });
 
                             imui.dropdown(&[_][]const u8{ "Hello", "Foo", "Bar" }, &selected_dropdown_item);
 
@@ -62,6 +64,7 @@ pub fn main() !void {
                             imui.divider();
                             imui.checkbox(&check);
                             imui.input(&input, &active);
+                            imui.numberField(&number_field_value, 0, 100, 1);
                         },
                         2 => {
                             imui.h1("Desktop");
