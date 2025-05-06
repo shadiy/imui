@@ -532,7 +532,7 @@ pub fn progressBar(progress: *f32, min: f32, max: f32, step: f32, text_left: ?[]
     text2(progress_text_right, progress_text_right_pos);
 
     ray.drawRectangleRec(background_rect, style.tertiary);
-    ray.drawRectangleRec(fill_rect, style.text_color);
+    ray.drawRectangleRec(fill_rect, style.switch_on_color);
     if (curr_container_data) |data| data.cursor.add(background_rect.width + progress_text_left_size.x + progress_text_right_size.x, background_rect.height);
 
     if (isMouseOver(background_rect)) {
@@ -693,13 +693,43 @@ pub fn divider() void {
     if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
 }
 
-pub fn input(curr_text: [:0]const u8, active: *bool) void {
-    const S = struct {
-        var input: [1024:0]u8 = undefined;
-    };
+pub fn radioButtons(options: []const []const u8, selected: *usize) void {
+    const pos = calcPosition();
 
-    std.mem.copyForwards(u8, S.input, curr_text);
+    const radius: f32 = 10;
 
+    var max_width: f32 = 0;
+
+    for (options, 0..) |option, i| {
+        const i_f32: f32 = @floatFromInt(i);
+        const center: ray.Vector2 = .{ .x = pos.x + radius, .y = pos.y + i_f32 * (radius * 2 + 4) + radius };
+
+        text2(option, .{ .x = center.x + radius + 4, .y = center.y - radius / 2 });
+
+        const color = if (i == selected.*) style.switch_on_color else style.switch_off_color;
+        ray.drawCircleV(center, radius, color);
+
+        const rect: ray.Rectangle = .{ .x = center.x - radius, .y = center.y - radius, .width = radius * 2, .height = radius * 2 };
+
+        if (isMouseOver(rect) and ray.isMouseButtonPressed(.left)) {
+            selected.* = i;
+        }
+
+        const formated = formatZ("{s}", .{option}) catch unreachable;
+
+        const text_width: f32 = @floatFromInt(ray.measureText(formated, @intFromFloat(style.font_size)));
+        max_width = @max(max_width, text_width);
+    }
+
+    const options_len: f32 = @floatFromInt(options.len);
+
+    if (curr_container_data) |data| data.cursor.add(max_width, options_len * radius * 2);
+    if (curr_window_data) |data| data.container_data.cursor.add(max_width, options_len * radius * 2);
+}
+
+var input_cursor: usize = 0;
+
+pub fn input(curr_text: *std.ArrayList(u8), active: *bool) void {
     const pos = calcPosition();
     const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 100, .height = 20 };
 
@@ -711,18 +741,29 @@ pub fn input(curr_text: [:0]const u8, active: *bool) void {
 
     if (active.*) {
         while (true) {
-            const char = ray.getCharPressed();
+            const char: u8 = @intCast(ray.getCharPressed());
             if (char == 0) break;
 
-            S.last_char += 1;
-            S.input[S.last_char] = char;
-            S.input[S.last_char + 1] = 0;
+            if (char == 8) {
+                _ = curr_text.orderedRemove(input_cursor - 1);
+                input_cursor -= 1;
+            } else if (char == 13) {
+                active.* = false;
+                break;
+            } else {
+                curr_text.insert(input_cursor, char) catch unreachable;
+                input_cursor += 1;
+            }
         }
     }
 
-    ray.drawTextEx(font, S.input, pos, 13, 1, ray.Color.white);
+    const formated = formatZ("{s}", .{curr_text.items}) catch unreachable;
 
-    std.mem.copyForwards(u8, curr_text, S.input);
+    const text_measure = ray.measureTextEx(font, formated, style.font_size, 1);
+
+    const text_pos = pos.add(.{ .x = 4, .y = rect.height / 2 - text_measure.y / 2 });
+
+    ray.drawTextEx(font, formated, text_pos, style.font_size, 1, ray.Color.white);
 
     if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
     if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);

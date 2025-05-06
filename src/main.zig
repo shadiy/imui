@@ -3,6 +3,9 @@ const ray = @import("raylib");
 
 const imui = @import("imui");
 
+var debug_allocator = std.heap.DebugAllocator(.{}).init;
+const allocator = debug_allocator.allocator();
+
 pub fn main() !void {
     // raylib
     try imui.openWindow(1280, 720, "Window");
@@ -22,6 +25,11 @@ pub fn main() !void {
 
     var onoff: bool = false;
     var check: bool = false;
+
+    var input = std.ArrayList(u8).init(allocator);
+    var active = false;
+
+    var selected_radio_button: usize = 0;
 
     while (!ray.windowShouldClose()) {
         imui.startFrame();
@@ -45,12 +53,15 @@ pub fn main() !void {
                             imui.progressBar(&progress_bar_value, 0, 20, 5, "Volume", null, .{ .x = 300, .y = 15 });
 
                             imui.dropdown(&[_][]const u8{ "Hello", "Foo", "Bar" }, &selected_dropdown_item);
+
+                            imui.radioButtons(&[_][]const u8{ "Hello", "Foo", "Bar" }, &selected_radio_button);
                         },
                         1 => {
                             imui.h1("Bluetooth");
                             imui.toggleSwitch(&onoff);
                             imui.divider();
                             imui.checkbox(&check);
+                            imui.input(&input, &active);
                         },
                         2 => {
                             imui.h1("Desktop");
