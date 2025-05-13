@@ -9,8 +9,8 @@ const allocator = debug_allocator.allocator();
 
 const ContainerType = enum {
     none,
-    verticalStack,
-    horizontalStack,
+    vertical,
+    horizontal,
 };
 
 const Style = struct {
@@ -48,7 +48,7 @@ const Cursor = struct {
 
     pub fn add(self: *Self, delta_x: f32, delta_y: f32) void {
         if (curr_container_data) |data| {
-            if (data.con_style.child_axis == .horizontalStack) {
+            if (data.con_style.child_axis == .horizontal) {
                 self.x += delta_x;
                 self.x += data.con_style.gap;
             } else {
@@ -107,7 +107,7 @@ pub fn endFrame() void {
 /// This is a helper function to format strings to a Z string.
 /// Uses static buffer length: 4096.
 /// If your string is longer than 4096, you will need to use std.fmt.bufPrintZ or std.fmt.allocPrintZ.
-fn formatZ(comptime format: []const u8, args: anytype) ![:0]const u8 {
+pub fn formatZ(comptime format: []const u8, args: anytype) ![:0]const u8 {
     const S = struct {
         var buf: [4096]u8 = undefined;
     };
@@ -156,7 +156,7 @@ pub fn loadStyle(path: []const u8) !Style {
     return parsed.value;
 }
 
-fn calcPosition() ray.Vector2 {
+pub fn calcPosition() ray.Vector2 {
     var scroll = ray.Vector2{ .x = 0, .y = 0 };
     var window_pos = ray.Vector2{ .x = 0, .y = 0 };
 
@@ -175,7 +175,7 @@ fn calcPosition() ray.Vector2 {
 }
 
 const ContainerStyle = struct {
-    child_axis: ContainerType = .horizontalStack,
+    child_axis: ContainerType = .horizontal,
     gap: f32 = 6,
     padding: f32 = 20,
     child_width: f32 = 100,
@@ -193,7 +193,7 @@ const ContainerData = struct {
     con_style: ContainerStyle = .{},
 };
 var container_data_map = std.StringHashMap(ContainerData).init(allocator);
-var curr_container_data: ?*ContainerData = null;
+pub var curr_container_data: ?*ContainerData = null;
 var parent_container_data: ?*ContainerData = null;
 
 pub inline fn openContainer(unique_id: []const u8, container_style: ContainerStyle, size: ray.Vector2) void {
@@ -210,7 +210,7 @@ pub inline fn openContainer(unique_id: []const u8, container_style: ContainerSty
     }
 
     if (parent_container_data) |parent| {
-        if (parent.con_style.child_axis == .horizontalStack) {
+        if (parent.con_style.child_axis == .horizontal) {
             global_container_cursor.x += data.rect.width + parent.con_style.gap;
         } else {
             global_container_cursor.y += data.rect.height + parent.con_style.gap;
@@ -225,7 +225,7 @@ pub inline fn openContainer(unique_id: []const u8, container_style: ContainerSty
     data.con_style = container_style;
 
     // scroll
-    const content_rect = ray.Rectangle{ .x = 0, .y = 0, .width = data.last_cursor.x, .height = data.last_cursor.y };
+    const content_rect = ray.Rectangle{ .x = 0, .y = 0, .width = size.x - 40, .height = data.last_cursor.y };
     _ = gui.guiScrollPanel(data.rect, null, content_rect, &data.scroll, &data.view);
 
     if (container_style.border_thickness > 0) {
@@ -419,13 +419,20 @@ pub fn button3(str: []const u8, position: ray.Vector2, size: ray.Vector2, normal
 pub fn text(str: []const u8) void {
     const strZ = formatZ("{s}", .{str}) catch unreachable;
     const pos = calcPosition();
-    ray.drawTextEx(font, strZ, pos, style.font_size, 1, style.text_color);
-    const text_size = ray.measureTextEx(font, strZ, style.font_size, 1);
 
+    text2(strZ, pos);
+
+    const text_size = ray.measureTextEx(font, strZ, style.font_size, 1);
     if (curr_container_data) |data| data.cursor.add(text_size.x, text_size.y);
 }
 
 pub fn text2(str: [:0]const u8, pos: ray.Vector2) void {
+    if (curr_container_data) |data| {
+        var custom_view = data.view;
+        custom_view.y -= 30;
+        custom_view.height += 30;
+        if (!ray.checkCollisionPointRec(pos, custom_view)) return;
+    }
     ray.drawTextEx(font, str, pos, style.font_size, 1, style.text_color);
 }
 
@@ -666,8 +673,23 @@ pub fn toggleSwitch(value: *bool) void {
 
 pub fn checkbox(value: *bool) void {
     const pos = calcPosition();
-
     const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 20, .height = 20 };
+
+    checkbox2(value, pos);
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+}
+
+pub fn checkbox2(value: *bool, pos: ray.Vector2) void {
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 20, .height = 20 };
+
+    if (curr_container_data) |data| {
+        var custom_view = data.view;
+        custom_view.y -= 30;
+        custom_view.height += 30;
+        if (!ray.checkCollisionPointRec(pos, custom_view)) return;
+    }
 
     if (isMouseOver(rect) and ray.isMouseButtonPressed(.left)) {
         value.* = !value.*;
@@ -675,9 +697,6 @@ pub fn checkbox(value: *bool) void {
 
     const color = if (value.*) style.switch_on_color else style.switch_off_color;
     ray.drawRectangleRec(rect, color);
-
-    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
-    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
 }
 
 pub fn divider() void {
@@ -689,7 +708,7 @@ pub fn divider() void {
     ray.drawLineEx(.{ .x = rect.x, .y = rect.y }, .{ .x = rect.x + size_x, .y = rect.y }, rect.height, style.text_color);
 
     if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
-    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, 6);
 }
 
 pub fn radioButtons(options: []const []const u8, selected: *usize) void {
@@ -788,3 +807,102 @@ pub fn input(curr_text: *std.ArrayList(u8), active: *bool) void {
     if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
     if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
 }
+
+pub fn input2(buffer: [:0]u8, editmode: *bool) void {
+    const pos = calcPosition();
+    const rect: ray.Rectangle = .{ .x = pos.x, .y = pos.y, .width = 100, .height = 40 };
+
+    gui.guiSetStyle(.default, gui.GuiControlProperty.border_width, 1);
+    if (gui.guiTextBox(rect, buffer, 32, editmode.*) > 0) {
+        editmode.* = !editmode.*;
+    }
+    gui.guiSetStyle(.default, gui.GuiControlProperty.border_width, 0);
+
+    if (curr_container_data) |data| data.cursor.add(rect.width, rect.height);
+    if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
+}
+
+// testing another type of ui
+pub fn Button() type {
+    return struct {
+        const Self = @This();
+
+        label: []const u8,
+        callback: ?fn () void,
+
+        pub fn init() Self {
+            return .{
+                .label = "",
+                .callback = null,
+            };
+        }
+
+        pub fn setLabel(self: *Self, label: []const u8) *Self {
+            self.label = label;
+
+            return self;
+        }
+
+        pub fn onClick(self: *Self, callback: fn () void) *Self {
+            self.callback = callback;
+            return self;
+        }
+
+        pub fn build(self: *Self) void {
+            button2(self.label, calcPosition(), .{ .x = 100, .y = 20 });
+
+            if (!isMouseOver(calcPosition(), .{ .x = 100, .y = 20 })) return;
+            if (ray.isMouseButtonReleased(.left)) {
+                self.callback();
+            }
+        }
+    };
+}
+
+test "ui" {
+    //const allocator = std.testing.allocator;
+
+    try openWindow(1280, 720, "Window");
+    defer closeWindow();
+
+    const my_font = try loadFont("C:\\Windows\\Fonts\\Arial.ttf");
+    defer ray.unloadFont(my_font);
+    setFont(my_font);
+
+    while (!ray.windowShouldClose()) {
+        startFrame();
+
+        container("main", .{ .child_axis = .vertical }, percent(100, 100))({
+            container("search-tab", .{ .child_axis = .horizontal }, percent(100, 10))({
+                // TODO: add input field
+
+                if (button("test")) {
+                    std.debug.print("tet\n", .{});
+                }
+
+                //imui.Button()
+                //    .init()
+                //    .setLabel("Install All")
+                //    .onClick(printt);
+                //.build();
+            });
+
+            container("content", .{ .child_axis = .vertical, .border_thickness = 2 }, percent(100, 90))({
+                // list all packages
+                if (button("test")) {
+                    std.debug.print("tet\n", .{});
+                }
+            });
+        });
+
+        ray.drawFPS(0, 0);
+
+        endFrame();
+    }
+
+    try std.testing.expect(true);
+}
+
+//fn printt() void {
+//    std.debug.print("Hello World\n", .{});
+//}
