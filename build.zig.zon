@@ -40,10 +40,6 @@
             .url = "git+https://github.com/Not-Nik/raylib-zig?ref=devel#d6c77762cbdebbf56d3ff101142048dfae2496c4",
             .hash = "raylib_zig-5.6.0-dev-KE8REBMyBQCnQ9RBhHsoSKr97XmDHF84wx3g0UiMRDxj",
         },
-        .sqlite = .{
-            .url = "git+https://github.com/vrischmann/zig-sqlite#7159aae38294daef87e078a3883b52df6c614679",
-            .hash = "sqlite-3.48.0-F2R_awaHDgBCfELBqX0eE4rGr66L_C6aIdA665mbwlhZ",
-        },
     },
     .paths = .{
         "build.zig",

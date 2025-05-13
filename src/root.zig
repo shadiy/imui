@@ -1,5 +1,4 @@
 const std = @import("std");
-const testing = std.testing;
 
 const ray = @import("raylib");
 const gui = @import("raygui");
@@ -858,6 +857,8 @@ pub fn Button() type {
         }
     };
 }
+
+const testing = std.testing;
 
 test "ui" {
     //const allocator = std.testing.allocator;
