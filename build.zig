@@ -4,20 +4,20 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib_mod = b.createModule(.{
+    const imui = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const lib = b.addLibrary(.{ .linkage = .static, .name = "imui", .root_module = lib_mod });
+    const lib = b.addLibrary(.{ .linkage = .static, .name = "imui", .root_module = imui });
 
     b.installArtifact(lib);
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{
-        .root_module = lib_mod,
+        .root_module = imui,
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     const raygui = raylib_dep.module("raygui"); // raygui module
     const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
 
-    lib_mod.linkLibrary(raylib_artifact);
-    lib_mod.addImport("raylib", raylib);
-    lib_mod.addImport("raygui", raygui);
+    imui.linkLibrary(raylib_artifact);
+    imui.addImport("raylib", raylib);
+    imui.addImport("raygui", raygui);
 }
