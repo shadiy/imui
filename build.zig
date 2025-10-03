@@ -10,21 +10,43 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const exe_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "test",
+        .root_module = exe_mod,
+    });
+
+    exe.root_module.addImport("imui", imui);
+
+    //exe.subsystem = .Windows;
+
+    b.installArtifact(exe);
+
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+
     //const lib = b.addLibrary(.{ .linkage = .static, .name = "imui", .root_module = imui });
     //
     //b.installArtifact(lib);
 
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
     const lib_unit_tests = b.addTest(.{
         .root_module = imui,
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
@@ -41,4 +63,8 @@ pub fn build(b: *std.Build) void {
     imui.linkLibrary(raylib_artifact);
     imui.addImport("raylib", raylib);
     imui.addImport("raygui", raygui);
+
+    exe.linkLibrary(raylib_artifact);
+    exe.root_module.addImport("raylib", raylib);
+    exe.root_module.addImport("raygui", raygui);
 }

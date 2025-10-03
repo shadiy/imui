@@ -90,6 +90,11 @@ pub fn closeWindow() void {
 }
 
 pub fn startFrame() void {
+    if (ray.isWindowResized()) {
+        window_width = @floatFromInt(ray.getScreenWidth());
+        window_height = @floatFromInt(ray.getScreenHeight());
+    }
+
     ray.beginDrawing();
     ray.clearBackground(style.background_color);
 
@@ -98,6 +103,8 @@ pub fn startFrame() void {
 }
 
 pub fn endFrame() void {
+    executeCommands();
+
     drawDropdownOptions(dropdown_data);
 
     ray.endDrawing();
@@ -821,89 +828,200 @@ pub fn input2(buffer: [:0]u8, editmode: *bool) void {
     if (curr_window_data) |data| data.container_data.cursor.add(rect.width, rect.height);
 }
 
-// testing another type of ui
-pub fn Button() type {
-    return struct {
-        const Self = @This();
+const CommandType = enum {
+    draw_rect,
+    draw_rect_lines,
+    text,
+};
 
-        label: []const u8,
-        callback: ?fn () void,
+const Rectangle = struct {
+    rect: ray.Rectangle,
+    color: ray.Color,
+};
 
-        pub fn init() Self {
-            return .{
-                .label = "",
-                .callback = null,
-            };
-        }
+const Text = struct {
+    position: ray.Vector2,
+    text: []const u8,
+    color: ray.Color,
+};
 
-        pub fn setLabel(self: *Self, label: []const u8) *Self {
-            self.label = label;
+const CommandData = union(CommandType) {
+    draw_rect: Rectangle,
+    draw_rect_lines: Rectangle,
+    text: Text,
+};
 
-            return self;
-        }
+const Command = struct {
+    cmd_type: CommandType,
+    data: CommandData,
+    layer: i32,
+};
 
-        pub fn onClick(self: *Self, callback: fn () void) *Self {
-            self.callback = callback;
-            return self;
-        }
+var command_buffer = std.ArrayList(Command).init(std.heap.c_allocator);
+var active_layer: i32 = 0;
 
-        pub fn build(self: *Self) void {
-            button2(self.label, calcPosition(), .{ .x = 100, .y = 20 });
-
-            if (!isMouseOver(calcPosition(), .{ .x = 100, .y = 20 })) return;
-            if (ray.isMouseButtonReleased(.left)) {
-                self.callback();
-            }
-        }
-    };
+var layer_: i32 = 0;
+pub fn setLayer(layer: i32) void {
+    layer_ = layer;
+}
+pub fn getLayer() i32 {
+    return layer_;
 }
 
-const testing = std.testing;
+fn lessThanFn(_: void, lhs: Command, rhs: Command) bool {
+    return lhs.layer < rhs.layer;
+}
 
-test "ui" {
-    //const allocator = std.testing.allocator;
+fn executeCommands() void {
+    std.mem.sort(Command, command_buffer.items, {}, lessThanFn);
 
-    try openWindow(1280, 720, "Window");
-    defer closeWindow();
-
-    const my_font = try loadFont("C:\\Windows\\Fonts\\Arial.ttf");
-    defer ray.unloadFont(my_font);
-    setFont(my_font);
-
-    while (!ray.windowShouldClose()) {
-        startFrame();
-
-        container("main", .{ .child_axis = .vertical }, percent(100, 100))({
-            container("search-tab", .{ .child_axis = .horizontal }, percent(100, 10))({
-                // TODO: add input field
-
-                if (button("test")) {
-                    std.debug.print("tet\n", .{});
-                }
-
-                //imui.Button()
-                //    .init()
-                //    .setLabel("Install All")
-                //    .onClick(printt);
-                //.build();
-            });
-
-            container("content", .{ .child_axis = .vertical, .border_thickness = 2 }, percent(100, 90))({
-                // list all packages
-                if (button("test")) {
-                    std.debug.print("tet\n", .{});
-                }
-            });
-        });
-
-        ray.drawFPS(0, 0);
-
-        endFrame();
+    for (command_buffer.items) |cmd| {
+        switch (cmd.cmd_type) {
+            .draw_rect => {
+                const data = cmd.data.draw_rect;
+                ray.drawRectangleRec(data.rect, data.color);
+            },
+            .draw_rect_lines => {
+                const data = cmd.data.draw_rect_lines;
+                ray.drawRectangleLinesEx(data.rect, style.border_thickness, data.color);
+            },
+            .text => {
+                const data = cmd.data.text;
+                const text_z = formatZ("{s}", .{data.text}) catch unreachable;
+                ray.drawTextEx(font, text_z, data.position, style.font_size, 1, data.color);
+            },
+        }
     }
 
-    try std.testing.expect(true);
+    command_buffer.clearRetainingCapacity();
 }
 
-//fn printt() void {
-//    std.debug.print("Hello World\n", .{});
-//}
+fn addRect(rect: ray.Rectangle, color: ray.Color) void {
+    command_buffer.append(.{
+        .cmd_type = .draw_rect,
+        .data = .{ .draw_rect = .{ .rect = rect, .color = color } },
+        .layer = layer_,
+    }) catch unreachable;
+}
+
+fn addRectLines(rect: ray.Rectangle, color: ray.Color) void {
+    command_buffer.append(.{
+        .cmd_type = .draw_rect_lines,
+        .data = .{ .draw_rect_lines = .{ .rect = rect, .color = color } },
+        .layer = layer_,
+    }) catch unreachable;
+}
+
+fn addText(str: []const u8, pos: ray.Vector2, color: ray.Color) void {
+    command_buffer.append(.{
+        .cmd_type = .text,
+        .data = .{ .text = .{ .position = pos, .text = str, .color = color } },
+        .layer = layer_,
+    }) catch unreachable;
+}
+
+pub fn commandButton(position: ray.Vector2, size: ray.Vector2, str: []const u8) bool {
+    const rect: ray.Rectangle = .{ .x = position.x, .y = position.y, .width = size.x, .height = size.y };
+
+    var res = false;
+
+    if (isMouseOver(rect) and active_layer == layer_) {
+        addRect(rect, ray.Color.blue);
+
+        if (ray.isMouseButtonDown(.left)) {
+            addRect(rect, ray.Color.green);
+        }
+
+        if (ray.isMouseButtonReleased(.left)) {
+            std.debug.print("awdadada\n", .{});
+            res = true;
+        }
+    } else {
+        addRect(rect, ray.Color.gray);
+        addRectLines(rect, style.border_color);
+    }
+
+    const strZ = formatZ("{s}", .{str}) catch unreachable;
+
+    const text_size = ray.measureTextEx(font, strZ, style.font_size, 1);
+    addText(str, .{ .x = rect.x + rect.width / 2 - text_size.x / 2, .y = rect.y + rect.height / 2 - text_size.y / 2 }, style.text_color);
+
+    return res;
+}
+
+pub fn commandDropdown(position: ray.Vector2, size: ray.Vector2, is_open: *bool, options: []const []const u8, selected: *usize) void {
+    const rect: ray.Rectangle = .{ .x = position.x, .y = position.y, .width = size.x, .height = size.y };
+
+    if (commandButton(position, size, options[selected.*])) {
+        is_open.* = !is_open.*;
+    }
+
+    if (is_open.*) {
+        active_layer = 10;
+
+        for (options, 0..) |option, i| {
+            const i_f32: f32 = @floatFromInt(i);
+            if (button2(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
+                selected.* = i;
+                is_open.* = false;
+                active_layer = layer_;
+
+                return;
+            }
+        }
+
+        if (ray.isMouseButtonPressed(.left)) {
+            is_open.* = false;
+            active_layer = layer_;
+        }
+    }
+
+    gui.guiDrawIcon(3, @intFromFloat(rect.x + rect.width - 30), @intFromFloat(rect.y + rect.height / 4), 1, style.text_color);
+}
+
+var map = std.AutoHashMap(usize, *anyopaque).init(allocator);
+var index: usize = 0;
+
+pub fn initState(comptime T: type) *T {
+    const res = map.getOrPut(index) catch unreachable;
+    if (!res.found_existing) res.value_ptr.* = allocator.create(T) catch unreachable;
+    index += 1;
+    return @ptrCast(res.value_ptr.*);
+}
+
+pub fn dropdownNew(options: []const []const u8, selected: *usize) void {
+    const State = struct {
+        position: ray.Vector2 = .{ .x = 0, .y = 0 },
+        is_open: bool = false,
+    };
+
+    const state = initState(State);
+
+    const rect: ray.Rectangle = .{ .x = state.position.x, .y = state.position.y, .width = 100, .height = 40 };
+
+    if (commandButton(state.position, .{ .x = 100, .y = 40 }, options[selected.*])) {
+        state.is_open.* = !state.is_open.*;
+    }
+
+    if (state.is_open.*) {
+        active_layer = 10;
+
+        for (options, 0..) |option, i| {
+            const i_f32: f32 = @floatFromInt(i);
+            if (button2(option, .{ .x = rect.x, .y = rect.y + rect.height * i_f32 + rect.height }, .{ .x = rect.width, .y = rect.height })) {
+                selected.* = i;
+                state.is_open.* = false;
+                active_layer = layer_;
+
+                return;
+            }
+        }
+
+        if (ray.isMouseButtonPressed(.left)) {
+            state.is_open.* = false;
+            active_layer = layer_;
+        }
+    }
+
+    gui.guiDrawIcon(3, @intFromFloat(rect.x + rect.width - 30), @intFromFloat(rect.y + rect.height / 4), 1, style.text_color);
+}
